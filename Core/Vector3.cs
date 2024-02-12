@@ -18,6 +18,13 @@ public class Vector3(float x, float y, float z)
         return new Vector3(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
     }
 
+    // Negation
+    public static Vector3 operator -(Vector3 v)
+    {
+        return new Vector3(-v.X, -v.Y, -v.Z);
+    }
+
+
     // Vector scaling (multiplication by a scalar)
     public static Vector3 operator *(Vector3 v, float scalar)
     {
