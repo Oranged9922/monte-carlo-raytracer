@@ -10,8 +10,8 @@ class Program
         const float aspectRatio = 16.0f / 9.0f;
         const int imageWidth = 1920;
         const int imageHeight = (int)(imageWidth / aspectRatio);
-        const int samplesPerPixel = 100; // For anti-aliasing
-        const int maxDepth = 10; // Max recursion depth for rays
+        const int samplesPerPixel = 50; // For anti-aliasing
+        const int maxDepth = 2; // Max recursion depth for rays
 
         // World
         HittableList world = new HittableList();
@@ -28,23 +28,43 @@ class Program
         Camera camera = new Camera(new Vector3(-2, 2, 1), new Vector3(0, 0, -1), new Vector3(0, 1, 0), 90, aspectRatio, aperture, focusDist);
 
         // Render
-        using (StreamWriter sw = new StreamWriter("image.ppm"))
+
+        // Image buffer to store colors
+        Vector3[,] imageBuffer = new Vector3[imageHeight, imageWidth];
+
+        // Use Parallel.For to distribute the rows across multiple threads
+        Parallel.For(0, imageHeight, j =>
+        {
+            Console.WriteLine($"Processing scanline {j} on thread {Thread.CurrentThread.ManagedThreadId}");
+            for (int i = 0; i < imageWidth; i++)
+            {
+                Vector3 pixelColor = new Vector3(0, 0, 0);
+                for (int s = 0; s < samplesPerPixel; s++)
+                {
+                    float u = (i + Random.Shared.NextSingle()) / (imageWidth - 1);
+                    float v = (j + Random.Shared.NextSingle()) / (imageHeight - 1);
+                    Ray ray = camera.GetRay(u, v);
+                    pixelColor += RayColor(ray, world, maxDepth);
+                }
+                imageBuffer[j, i] = pixelColor / samplesPerPixel; // Store the averaged color
+            }
+        });
+
+        // Now write the imageBuffer to the file, in order
+        using (StreamWriter sw = new StreamWriter($"image_samples-{samplesPerPixel}_depth-{maxDepth}.ppm"))
         {
             sw.WriteLine($"P3\n{imageWidth} {imageHeight}\n255");
-            for (int j = imageHeight - 1; j >= 0; j--)
+            for (int j = imageHeight-1 ; j > 0; j--)
             {
-                Console.WriteLine($"Scanlines remaining: {j}");
                 for (int i = 0; i < imageWidth; i++)
                 {
-                    Vector3 pixelColor = new Vector3(0, 0, 0);
-                    for (int s = 0; s < samplesPerPixel; s++)
-                    {
-                        float u = (i + Random.Shared.NextSingle()) / (imageWidth - 1);
-                        float v = (j + Random.Shared.NextSingle()) / (imageHeight - 1);
-                        Ray ray = camera.GetRay(u, v);
-                        pixelColor += RayColor(ray, world, maxDepth);
-                    }
-                    WriteColor(sw, pixelColor, samplesPerPixel);
+                    Vector3 pixelColor = imageBuffer[j, i];
+                    // Apply gamma correction and clamp
+                    pixelColor = new Vector3((float)Math.Sqrt(pixelColor.X), (float)Math.Sqrt(pixelColor.Y), (float)Math.Sqrt(pixelColor.Z));
+                    int ir = (int)(256 * Clamp(pixelColor.X, 0.0f, 0.999f));
+                    int ig = (int)(256 * Clamp(pixelColor.Y, 0.0f, 0.999f));
+                    int ib = (int)(256 * Clamp(pixelColor.Z, 0.0f, 0.999f));
+                    sw.WriteLine($"{ir} {ig} {ib}");
                 }
             }
         }
